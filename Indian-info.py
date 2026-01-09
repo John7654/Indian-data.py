@@ -1,16 +1,30 @@
-import logging
-import requests
-import json
 import os
+import json
+import requests
+from flask import Flask
+from threading import Thread
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 
-# কনফিগারেশন
+# --- FLASK SERVER FOR RENDER ---
+app_web = Flask('')
+
+@app_web.route('/')
+def home():
+    return "Bot is running online!"
+
+def run():
+    app_web.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# --- BOT CONFIGURATION ---
 TOKEN = "8524842400:AAGlrcTUWLXobdI_GyCKoM0-O0yjHIbOGVY"
 ADMIN_ID = 6973940391
 DB_FILE = "users_db.json"
 
-# ডাটাবেস লোড করা
 def load_db():
     if os.path.exists(DB_FILE):
         with open(DB_FILE, "r") as f:
@@ -23,6 +37,7 @@ def save_db(db):
 
 USER_DATA = load_db()
 
+# --- BOT FUNCTIONS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     if user_id not in USER_DATA:
@@ -45,9 +60,8 @@ async def check_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = str(query.from_user.id)
     
-    # এখানে সরাসরি মেসেজ পাঠিয়ে দেওয়া হচ্ছে (ফাস্ট জয়েন)
     await query.message.edit_text(
-        f"✅ আপনার জয়েন সম্পূর্ন হয়েছে।\n\nএখন একটি ১০ ডিজিটের Indian নাম্বার দিন।\n\n💰 আপনার ক্রেডিট: {USER_DATA[user_id]['credits']}"
+        f"✅ আপনার জয়েন সম্পূর্ন হয়েছে।\n\nএখন একটি ১০ ডিজিটের Indian নাম্বার দিন।\n\n💰 আপনার ক্রেডিট: {USER_DATA.get(user_id, {}).get('credits', 0)}"
     )
 
 async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,7 +73,7 @@ async def handle_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if USER_DATA.get(user_id, {}).get('credits', 0) <= 0:
-        await update.message.reply_text("🚫 আপনার ক্রেডিট শেষ! রেফার করুন বা এডমিনের সাথে যোগাযোগ করুন।")
+        await update.message.reply_text("🚫 আপনার ক্রেডিট শেষ! আরও ক্রেডিট পেতে এডমিনের সাথে যোগাযোগ করুন।")
         return
 
     await update.message.reply_text("🔍 তথ্য খোঁজা হচ্ছে, দয়া করে অপেক্ষা করুন...")
@@ -86,16 +100,22 @@ async def add_credit(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_db(USER_DATA)
             await update.message.reply_text(f"✅ User {target_id} কে {amount} ক্রেডিট দেওয়া হয়েছে।")
         else:
-            await update.message.reply_text("❌ ইউজার খুঁজে পাওয়া যায়নি।")
+            await update.message.reply_text("❌ ইউজার আগে বটটি স্টার্ট করতে হবে।")
     except:
         await update.message.reply_text("সঠিক নিয়ম: `/addcredit ইউজার_আইডি পরিমাণ`", parse_mode="Markdown")
 
 def main():
+    # Flask সার্ভার চালু করা
+    keep_alive()
+    
+    # বট চালু করা
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("addcredit", add_credit))
     app.add_handler(CallbackQueryHandler(check_join, pattern="check_join"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_number))
+    
+    print("Bot and Server are running...")
     app.run_polling()
 
 if __name__ == '__main__':
